@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Smart Home App v3.1 - Material Theme -->
+    <style name="Theme.SmartHome" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Primary brand color (Electric Blue) -->
+        <item name="android:statusBarColor">#007bff</item>
+        <item name="android:navigationBarColor">#007bff</item>
+        <!-- Window background -->
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

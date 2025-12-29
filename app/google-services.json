@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "506964717208",
+    "firebase_url": "https://iot-smarthome-304c3-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "iot-smarthome-304c3",
+    "storage_bucket": "iot-smarthome-304c3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:506964717208:android:dc6ab0ab8f42969c5beaed",
+        "android_client_info": {
+          "package_name": "IoTandroid123.apk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBEpQ9Mmlv-b-_CyZEvh10Griy68NbQCkk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:506964717208:android:bad77537badd708b5beaed",
+        "android_client_info": {
+          "package_name": "com.example.smarthome"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBEpQ9Mmlv-b-_CyZEvh10Griy68NbQCkk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

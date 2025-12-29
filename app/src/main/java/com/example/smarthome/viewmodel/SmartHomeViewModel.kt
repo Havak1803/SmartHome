@@ -1,0 +1,468 @@
+package com.example.smarthome.viewmodel
+
+import android.app.Application
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.smarthome.model.*
+import com.example.smarthome.network.MQTTHelper
+import com.example.smarthome.utils.AppConfig
+import com.google.firebase.database.FirebaseDatabase
+import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.UUID
+
+/**
+ * SmartHomeViewModel - Version 3.3
+ * FIXED: Firebase Asia-Southeast1 region + Type safety
+ */
+class SmartHomeViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val TAG = "SmartHomeViewModel"
+    private val gson = Gson()
+    private var mqttHelper: MQTTHelper? = null
+    private val roomPrefs = application.getSharedPreferences("room_names", android.content.Context.MODE_PRIVATE)
+
+    // Firebase Database instance with Asia region URL
+    private val firebaseDatabase: FirebaseDatabase by lazy {
+        FirebaseDatabase.getInstance(AppConfig.FIREBASE_URL)
+    }
+
+    // ==========================================
+    // STATE FLOWS
+    // ==========================================
+
+    private val _rooms = MutableStateFlow<List<Room>>(emptyList())
+    val rooms: StateFlow<List<Room>> = _rooms.asStateFlow()
+
+    private val _isConnected = MutableStateFlow(false)
+    val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+
+    private val _mqttConfig = MutableStateFlow(
+        MqttConfig(
+            broker = AppConfig.MQTT_BROKER,
+            port = AppConfig.MQTT_PORT,
+            username = "",
+            password = ""
+        )
+    )
+    val mqttConfig: StateFlow<MqttConfig> = _mqttConfig.asStateFlow()
+
+    private val _chartData = MutableStateFlow<List<HistoryLog>>(emptyList())
+    val chartData: StateFlow<List<HistoryLog>> = _chartData.asStateFlow()
+
+    private val _firebaseConfig = MutableStateFlow(
+        FirebaseConfig(
+            databaseUrl = AppConfig.FIREBASE_URL,
+            apiKey = AppConfig.FIREBASE_DB_SECRET
+        )
+    )
+    val firebaseConfig: StateFlow<FirebaseConfig> = _firebaseConfig.asStateFlow()
+
+    private val _isLoadingChart = MutableStateFlow(false)
+    val isLoadingChart: StateFlow<Boolean> = _isLoadingChart.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    init {
+        Log.d(TAG, "ViewModel v3.3 initialized with Firebase URL: ${AppConfig.FIREBASE_URL}")
+        loadMqttConfig()
+        loadFirebaseConfig()
+    }
+
+    // ==========================================
+    // ROOM RENAMING
+    // ==========================================
+
+    fun saveRoomName(deviceId: String, customName: String) {
+        roomPrefs.edit().putString(deviceId, customName).apply()
+
+        val currentRooms = _rooms.value.toMutableList()
+        val index = currentRooms.indexOfFirst { it.id == deviceId }
+        if (index != -1) {
+            currentRooms[index] = currentRooms[index].copy(name = customName)
+            _rooms.value = currentRooms
+        }
+    }
+
+    fun getRoomName(deviceId: String): String {
+        return roomPrefs.getString(deviceId, null) ?: deviceId.uppercase().replace("_", " ")
+    }
+
+    // ==========================================
+    // MQTT CONNECTION
+    // ==========================================
+
+    fun connectToMqtt() {
+        viewModelScope.launch {
+            try {
+                val config = _mqttConfig.value
+
+                if (config.username.isEmpty() || config.password.isEmpty()) {
+                    _errorMessage.value = "Configure MQTT credentials"
+                    return@launch
+                }
+
+                mqttHelper = MQTTHelper(
+                    context = getApplication(),
+                    config = config,
+                    onMessageReceived = { topic, message ->
+                        handleIncomingMessage(topic, message)
+                    },
+                    onConnectionStatusChanged = { connected ->
+                        _isConnected.value = connected
+                        if (connected) {
+                            _errorMessage.value = null
+                        }
+                    }
+                )
+
+                mqttHelper?.connect()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "MQTT error", e)
+                _errorMessage.value = "Connection failed"
+            }
+        }
+    }
+
+    fun disconnectFromMqtt() {
+        mqttHelper?.disconnect()
+        _isConnected.value = false
+    }
+
+    // ==========================================
+    // MQTT MESSAGE HANDLING
+    // ==========================================
+
+    private fun handleIncomingMessage(topic: String, message: String) {
+        try {
+            val parts = topic.split("/")
+            if (parts.size < 3 || parts[0] != "SmartHome") return
+
+            val deviceId = parts[1]
+            val messageType = parts[2]
+
+            val currentRooms = _rooms.value.toMutableList()
+            var room = currentRooms.find { it.id == deviceId }
+
+            if (room == null) {
+                room = Room(
+                    id = deviceId,
+                    name = getRoomName(deviceId),
+                    isConnected = true,
+                    lastUpdate = System.currentTimeMillis()
+                )
+                currentRooms.add(room)
+            }
+
+            val updatedRoom = when (messageType) {
+                "state" -> parseStateMessage(room, message)
+                "data" -> parseDataMessage(room, message)
+                "info" -> parseInfoMessage(room, message)
+                else -> room
+            }
+
+            val index = currentRooms.indexOfFirst { it.id == deviceId }
+            if (index != -1) {
+                currentRooms[index] = updatedRoom.copy(
+                    isConnected = true,
+                    lastUpdate = System.currentTimeMillis()
+                )
+            }
+
+            _rooms.value = currentRooms
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Message parse error", e)
+        }
+    }
+
+    private fun parseStateMessage(room: Room, message: String): Room {
+        return try {
+            val stateMsg = gson.fromJson(message, MqttStateMessage::class.java)
+            room.copy(
+                actuators = Actuators(
+                    light = stateMsg.light,
+                    fan = stateMsg.fan,
+                    ac = stateMsg.ac,
+                    mode = stateMsg.mode,
+                    interval = stateMsg.interval
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "State parse error", e)
+            room
+        }
+    }
+
+    private fun parseDataMessage(room: Room, message: String): Room {
+        return try {
+            val dataMsg = gson.fromJson(message, MqttDataMessage::class.java)
+            room.copy(
+                sensors = Sensors(
+                    temperature = dataMsg.temperature,
+                    humidity = dataMsg.humidity,
+                    light = dataMsg.light
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Data parse error", e)
+            room
+        }
+    }
+
+    private fun parseInfoMessage(room: Room, message: String): Room {
+        return try {
+            val infoMsg = gson.fromJson(message, MqttInfoMessage::class.java)
+            room.copy(
+                deviceInfo = DeviceInfo(
+                    ip = infoMsg.ip,
+                    ssid = infoMsg.ssid,
+                    firmware = infoMsg.firmware,
+                    mac = infoMsg.mac
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Info parse error", e)
+            room
+        }
+    }
+
+    // ==========================================
+    // MQTT COMMAND SENDING
+    // ==========================================
+
+    fun controlDevice(deviceId: String, device: String, state: Int) {
+        sendCommand(deviceId, "set_device", SetDeviceParams(device, state))
+    }
+
+    fun controlAllDevices(deviceId: String, fan: Int, light: Int, ac: Int) {
+        sendCommand(deviceId, "set_devices", SetDevicesParams(fan, light, ac))
+    }
+
+    fun setSystemMode(deviceId: String, mode: Int) {
+        sendCommand(deviceId, "set_mode", SetModeParams(mode))
+    }
+
+    fun setSensorInterval(deviceId: String, interval: Int) {
+        sendCommand(deviceId, "set_interval", SetIntervalParams(interval.coerceIn(5, 3600)))
+    }
+
+    fun rebootDevice(deviceId: String) {
+        sendCommand(deviceId, "reboot", mapOf<String, Any>())
+    }
+
+    private fun sendCommand(deviceId: String, command: String, params: Any) {
+        try {
+            if (!_isConnected.value) {
+                _errorMessage.value = "Not connected"
+                return
+            }
+
+            val mqttCommand = MqttCommand(
+                id = UUID.randomUUID().toString(),
+                command = command,
+                params = params
+            )
+
+            val jsonPayload = gson.toJson(mqttCommand)
+            val topic = "SmartHome/$deviceId/cmd"
+
+            mqttHelper?.publish(topic, jsonPayload, qos = 1, retained = false)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Send error", e)
+            _errorMessage.value = "Command failed"
+        }
+    }
+
+    // ==========================================
+    // MQTT CONFIGURATION
+    // ==========================================
+
+    fun updateMqttConfig(config: MqttConfig) {
+        _mqttConfig.value = config
+        saveMqttConfig(config)
+        disconnectFromMqtt()
+        connectToMqtt()
+    }
+
+    private fun saveMqttConfig(config: MqttConfig) {
+        val prefs = getApplication<Application>().getSharedPreferences("mqtt_prefs", android.content.Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("broker", config.broker)
+            .putInt("port", config.port)
+            .putString("username", config.username)
+            .putString("password", config.password)
+            .apply()
+    }
+
+    private fun loadMqttConfig() {
+        val prefs = getApplication<Application>().getSharedPreferences("mqtt_prefs", android.content.Context.MODE_PRIVATE)
+        _mqttConfig.value = MqttConfig(
+            broker = prefs.getString("broker", AppConfig.MQTT_BROKER) ?: AppConfig.MQTT_BROKER,
+            port = prefs.getInt("port", AppConfig.MQTT_PORT),
+            username = prefs.getString("username", "") ?: "",
+            password = prefs.getString("password", "") ?: ""
+        )
+    }
+
+    // ==========================================
+    // FIREBASE HISTORY (ASIA REGION + TYPE SAFE)
+    // ==========================================
+
+    fun fetchHistory(deviceId: String, timeRange: TimeRange = TimeRange.DAY) {
+        viewModelScope.launch {
+            try {
+                _isLoadingChart.value = true
+
+                val config = _firebaseConfig.value
+                val currentTime = System.currentTimeMillis()
+                val timeThreshold = currentTime - (timeRange.hours * 3600 * 1000L)
+
+                // Use Firebase REST API with Asia region URL
+                val historyData = fetchFirebaseHistory(config.databaseUrl, deviceId, 200)
+
+                val filteredData = historyData
+                    .filter { it.timestamp >= timeThreshold }
+                    .sortedBy { it.timestamp }
+
+                _chartData.value = filteredData
+                Log.d(TAG, "Loaded ${filteredData.size} entries from Asia region")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Fetch error", e)
+                _errorMessage.value = "Load failed"
+                _chartData.value = emptyList()
+            } finally {
+                _isLoadingChart.value = false
+            }
+        }
+    }
+
+    /**
+     * FIXED: Type-safe Firebase parsing with .toFloat()
+     */
+    private suspend fun fetchFirebaseHistory(
+        databaseUrl: String,
+        deviceId: String,
+        limitToLast: Int
+    ): List<HistoryLog> = withContext(Dispatchers.IO) {
+        try {
+            val url = "${databaseUrl.trimEnd('/')}/history/$deviceId.json?orderBy=\"\$key\"&limitToLast=$limitToLast"
+
+            Log.d(TAG, "Fetching from Asia region: $url")
+
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.apply {
+                requestMethod = "GET"
+                connectTimeout = 15000
+                readTimeout = 15000
+                setRequestProperty("Accept", "application/json")
+            }
+
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                Log.e(TAG, "Firebase HTTP error: ${connection.responseCode}")
+                return@withContext emptyList()
+            }
+
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
+
+            val historyMap = try {
+                gson.fromJson(response, Map::class.java) as? Map<String, Any> ?: emptyMap()
+            } catch (e: Exception) {
+                Log.e(TAG, "JSON parse error", e)
+                emptyMap<String, Any>()
+            }
+
+            val historyList = mutableListOf<HistoryLog>()
+            historyMap.forEach { (pushId, data) ->
+                if (data is Map<*, *>) {
+                    try {
+                        @Suppress("UNCHECKED_CAST")
+                        val dataMap = data as Map<String, Any>
+
+                        // FIXED: Always use .toFloat() for type safety (matches HistoryLog model)
+                        val timestamp = (dataMap["timestamp"] as? Number)?.toLong() ?: 0L
+                        val temp = (dataMap["temp"] as? Number)?.toFloat() ?: 0f
+                        val humid = (dataMap["humid"] as? Number)?.toFloat() ?: 0f
+                        val lux = (dataMap["lux"] as? Number)?.toInt() ?: 0
+
+                        if (timestamp > 0) {
+                            historyList.add(
+                                HistoryLog(
+                                    timestamp = timestamp,
+                                    temp = temp,
+                                    humid = humid,
+                                    lux = lux,
+                                    pushId = pushId
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Skip entry: $pushId", e)
+                    }
+                }
+            }
+
+            Log.d(TAG, "Parsed ${historyList.size} entries")
+            historyList
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Firebase error", e)
+            emptyList()
+        }
+    }
+
+    // ==========================================
+    // FIREBASE CONFIGURATION
+    // ==========================================
+
+    fun updateFirebaseConfig(config: FirebaseConfig) {
+        _firebaseConfig.value = config
+        saveFirebaseConfig(config)
+    }
+
+    private fun saveFirebaseConfig(config: FirebaseConfig) {
+        val prefs = getApplication<Application>().getSharedPreferences("firebase_prefs", android.content.Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("databaseUrl", config.databaseUrl)
+            .putString("apiKey", config.apiKey)
+            .apply()
+    }
+
+    private fun loadFirebaseConfig() {
+        val prefs = getApplication<Application>().getSharedPreferences("firebase_prefs", android.content.Context.MODE_PRIVATE)
+        _firebaseConfig.value = FirebaseConfig(
+            databaseUrl = prefs.getString("databaseUrl", AppConfig.FIREBASE_URL) ?: AppConfig.FIREBASE_URL,
+            apiKey = prefs.getString("apiKey", AppConfig.FIREBASE_DB_SECRET) ?: AppConfig.FIREBASE_DB_SECRET
+        )
+    }
+
+    // ==========================================
+    // UTILITY
+    // ==========================================
+
+    fun clearChartData() {
+        _chartData.value = emptyList()
+    }
+
+    fun clearError() {
+        _errorMessage.value = null
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        mqttHelper?.cleanup()
+    }
+}
