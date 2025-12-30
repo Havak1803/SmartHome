@@ -24,8 +24,11 @@ class MainActivity : ComponentActivity() {
 
         auth = FirebaseAuth.getInstance()
 
-        // Check if user is logged in
-        if (auth.currentUser == null) {
+        // ⚠️ DEV MODE: Check for bypass flag
+        val bypassAuth = intent.getBooleanExtra("BYPASS_AUTH", false)
+
+        // Check if user is logged in (or bypassed)
+        if (auth.currentUser == null && !bypassAuth) {
             // Redirect to login
             startActivity(Intent(this, LoginActivity::class.java))
             finish()

@@ -59,7 +59,9 @@ class LoginActivity : ComponentActivity() {
     }
 
     private fun navigateToMain() {
-        startActivity(Intent(this, MainActivity::class.java))
+        val intent = Intent(this, MainActivity::class.java)
+        intent.putExtra("BYPASS_AUTH", true) // Pass bypass flag
+        startActivity(intent)
         finish()
     }
 }
@@ -182,19 +184,28 @@ fun LoginScreen(
                         }
 
                         isLoading = true
-                        // ONLY sign in - do NOT create account
-                        auth.signInWithEmailAndPassword(email, password)
-                            .addOnCompleteListener { task ->
-                                isLoading = false
-                                if (task.isSuccessful) {
-                                    onShowMessage("Login successful!")
-                                    onLoginSuccess()
-                                } else {
-                                    // Show error - do NOT auto-register
-                                    val errorMsg = task.exception?.message ?: "Login failed"
-                                    onShowMessage("Login failed: $errorMsg")
+                        try {
+                            // ONLY sign in - do NOT create account
+                            auth.signInWithEmailAndPassword(email, password)
+                                .addOnCompleteListener { task ->
+                                    isLoading = false
+                                    if (task.isSuccessful) {
+                                        onShowMessage("Login successful!")
+                                        onLoginSuccess()
+                                    } else {
+                                        // Show error - do NOT auto-register
+                                        val errorMsg = task.exception?.message ?: "Login failed"
+                                        onShowMessage("Login failed: $errorMsg")
+                                    }
                                 }
-                            }
+                                .addOnFailureListener { exception ->
+                                    isLoading = false
+                                    onShowMessage("Login error: ${exception.message ?: "Unknown error"}")
+                                }
+                        } catch (e: Exception) {
+                            isLoading = false
+                            onShowMessage("Firebase blocked: ${e.message ?: "Please try again later"}")
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -204,9 +215,10 @@ fun LoginScreen(
                     enabled = !isLoading
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(
+                        Text(
+                            text = "⏳",
                             color = TextWhite,
-                            modifier = Modifier.size(24.dp)
+                            fontSize = 24.sp
                         )
                     } else {
                         Row(
@@ -243,18 +255,27 @@ fun LoginScreen(
                         }
 
                         isLoading = true
-                        // Create new account
-                        auth.createUserWithEmailAndPassword(email, password)
-                            .addOnCompleteListener { task ->
-                                isLoading = false
-                                if (task.isSuccessful) {
-                                    onShowMessage("Account created successfully!")
-                                    onLoginSuccess()
-                                } else {
-                                    val errorMsg = task.exception?.message ?: "Registration failed"
-                                    onShowMessage("Registration failed: $errorMsg")
+                        try {
+                            // Create new account
+                            auth.createUserWithEmailAndPassword(email, password)
+                                .addOnCompleteListener { task ->
+                                    isLoading = false
+                                    if (task.isSuccessful) {
+                                        onShowMessage("Account created successfully!")
+                                        onLoginSuccess()
+                                    } else {
+                                        val errorMsg = task.exception?.message ?: "Registration failed"
+                                        onShowMessage("Registration failed: $errorMsg")
+                                    }
                                 }
-                            }
+                                .addOnFailureListener { exception ->
+                                    isLoading = false
+                                    onShowMessage("Registration error: ${exception.message ?: "Unknown error"}")
+                                }
+                        } catch (e: Exception) {
+                            isLoading = false
+                            onShowMessage("Firebase blocked: ${e.message ?: "Please try again later"}")
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -288,6 +309,21 @@ fun LoginScreen(
                     fontSize = 11.sp,
                     color = TextGrey.copy(alpha = 0.6f)
                 )
+
+                // ⚠️ BYPASS BUTTON - For testing only, remove in production
+                TextButton(
+                    onClick = {
+                        onShowMessage("⚠️ Bypassing Firebase Auth - DEV MODE")
+                        onLoginSuccess()
+                    },
+                    modifier = Modifier.padding(vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "🔓 SKIP LOGIN (DEV)",
+                        fontSize = 10.sp,
+                        color = TextGrey.copy(alpha = 0.4f)
+                    )
+                }
 
                 Text(
                     text = "Version ${AppConfig.APP_VERSION} - Asia Region",
