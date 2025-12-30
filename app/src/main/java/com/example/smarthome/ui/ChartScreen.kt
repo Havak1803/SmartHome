@@ -2,6 +2,7 @@ package com.example.smarthome.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -16,6 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,8 +28,8 @@ import com.example.smarthome.ui.theme.*
 import com.example.smarthome.viewmodel.SmartHomeViewModel
 
 /**
- * ChartScreen - V3.2 FIXED
- * Proper Material3 annotations + Float handling
+ * ChartScreen - V3.3 FIXED
+ * Touch interaction + Units display + Field name fix
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -247,7 +249,7 @@ fun ChartCard(data: List<HistoryLog>, parameter: String) {
 }
 
 /**
- * FIXED: Proper Float handling with explicit conversion
+ * FIXED v3.3: Float handling + Touch interaction + Y-axis with scale
  */
 @Composable
 fun LineChart(
@@ -263,6 +265,9 @@ fun LineChart(
             else -> it.lux.toFloat()
         }
     }
+
+    // Touch interaction state
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
     // Check for empty or invalid data
     if (values.isEmpty() || values.all { it == 0f }) {
@@ -283,50 +288,161 @@ fun LineChart(
         else -> LightColor
     }
 
-    Canvas(modifier = modifier) {
-        val width = size.width
-        val height = size.height
-        val padding = 40f
+    val unit = when (parameter) {
+        "temp" -> "°C"
+        "humid" -> "%"
+        else -> " lux"
+    }
 
-        val chartWidth = width - padding * 2
-        val chartHeight = height - padding * 2
+    Box(modifier = modifier) {
+        // Y-axis labels (left side)
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(50.dp)
+                .align(Alignment.CenterStart),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Top label (max value)
+            Text(
+                text = "${String.format("%.1f", maxValue)}$unit",
+                color = TextGrey,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(top = 16.dp)
+            )
 
-        if (values.size < 2) return@Canvas
+            // Middle labels
+            for (i in 1..3) {
+                val value = maxValue - (range / 4 * i)
+                Text(
+                    text = String.format("%.1f", value),
+                    color = TextGrey.copy(alpha = 0.7f),
+                    fontSize = 9.sp
+                )
+            }
 
-        // Grid lines
-        for (i in 0..4) {
-            val y = padding + (chartHeight / 4) * i
-            drawLine(
-                color = DividerColor,
-                start = Offset(padding, y),
-                end = Offset(width - padding, y),
-                strokeWidth = 1f
+            // Bottom label (min value)
+            Text(
+                text = "${String.format("%.1f", minValue)}$unit",
+                color = TextGrey,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(bottom = 16.dp)
             )
         }
 
-        // Line path
-        val path = Path()
-        values.forEachIndexed { index, value ->
-            val x = padding + (chartWidth / (values.size - 1)) * index
-            val normalizedValue = if (range > 0) (value - minValue) / range else 0.5f
-            val y = padding + chartHeight - (chartHeight * normalizedValue)
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 55.dp)
+                .pointerInput(values.size) {
+                    detectTapGestures(
+                        onPress = { offset ->
+                            val padding = 40f
+                            val chartWidth = size.width - padding * 2
+                            val stepX = chartWidth / (values.size - 1).coerceAtLeast(1)
+                            val index = ((offset.x - padding) / stepX).toInt()
+                                .coerceIn(0, values.size - 1)
+                            selectedIndex = index
+                            tryAwaitRelease()
+                        }
+                    )
+                }
+        ) {
+            val width = size.width
+            val height = size.height
+            val padding = 40f
 
-            if (index == 0) {
-                path.moveTo(x, y)
-            } else {
-                path.lineTo(x, y)
+            val chartWidth = width - padding * 2
+            val chartHeight = height - padding * 2
+
+            if (values.size < 2) return@Canvas
+
+            // Grid lines with tick marks
+            for (i in 0..4) {
+                val y = padding + (chartHeight / 4) * i
+
+                // Horizontal grid line
+                drawLine(
+                    color = DividerColor,
+                    start = Offset(padding, y),
+                    end = Offset(width - padding, y),
+                    strokeWidth = 1f
+                )
+
+                // Left tick mark
+                drawLine(
+                    color = TextGrey.copy(alpha = 0.5f),
+                    start = Offset(0f, y),
+                    end = Offset(padding - 5f, y),
+                    strokeWidth = 2f
+                )
+            }
+
+            // Line path
+            val path = Path()
+            values.forEachIndexed { index, value ->
+                val x = padding + (chartWidth / (values.size - 1)) * index
+                val normalizedValue = if (range > 0) (value - minValue) / range else 0.5f
+                val y = padding + chartHeight - (chartHeight * normalizedValue)
+
+                if (index == 0) {
+                    path.moveTo(x, y)
+                } else {
+                    path.lineTo(x, y)
+                }
+            }
+
+            drawPath(path = path, color = lineColor, style = Stroke(width = 3f))
+
+            // Points
+            values.forEachIndexed { index, value ->
+                val x = padding + (chartWidth / (values.size - 1)) * index
+                val normalizedValue = if (range > 0) (value - minValue) / range else 0.5f
+                val y = padding + chartHeight - (chartHeight * normalizedValue)
+
+                // Highlight selected point
+                if (index == selectedIndex) {
+                    drawCircle(color = Color.White, radius = 10f, center = Offset(x, y))
+                    drawCircle(color = lineColor, radius = 7f, center = Offset(x, y))
+                } else {
+                    drawCircle(color = lineColor, radius = 5f, center = Offset(x, y))
+                }
             }
         }
 
-        drawPath(path = path, color = lineColor, style = Stroke(width = 3f))
-
-        // Points
-        values.forEachIndexed { index, value ->
-            val x = padding + (chartWidth / (values.size - 1)) * index
-            val normalizedValue = if (range > 0) (value - minValue) / range else 0.5f
-            val y = padding + chartHeight - (chartHeight * normalizedValue)
-
-            drawCircle(color = lineColor, radius = 5f, center = Offset(x, y))
+        // Tooltip for selected point
+        selectedIndex?.let { index ->
+            if (index in values.indices) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = when (parameter) {
+                                "temp" -> "${String.format("%.1f", values[index])}°C"
+                                "humid" -> "${String.format("%.1f", values[index])}%"
+                                else -> "${values[index].toInt()} lux"
+                            },
+                            color = lineColor,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = java.text.SimpleDateFormat("HH:mm dd/MM", java.util.Locale.getDefault())
+                                .format(java.util.Date(data[index].timestamp)),
+                            color = TextGrey,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }

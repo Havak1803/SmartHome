@@ -153,6 +153,12 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
             val deviceId = parts[1]
             val messageType = parts[2]
 
+            // Filter out "app" - it's the Android app status, not an IoT device
+            if (deviceId == "app") {
+                Log.d(TAG, "Ignoring app status message")
+                return
+            }
+
             val currentRooms = _rooms.value.toMutableList()
             var room = currentRooms.find { it.id == deviceId }
 
@@ -338,12 +344,13 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
                 // Use Firebase REST API with Asia region URL
                 val historyData = fetchFirebaseHistory(config.databaseUrl, deviceId, 200)
 
+                // TEMPORARY FIX: Disable time filtering since ESP timestamps are from 1999 (NTP not synced)
+                // TODO: Fix ESP NTP sync, then re-enable: .filter { it.timestamp >= timeThreshold }
                 val filteredData = historyData
-                    .filter { it.timestamp >= timeThreshold }
                     .sortedBy { it.timestamp }
 
                 _chartData.value = filteredData
-                Log.d(TAG, "Loaded ${filteredData.size} entries from Asia region")
+                Log.d(TAG, "Loaded ${filteredData.size} entries (time filter disabled for testing)")
 
             } catch (e: Exception) {
                 Log.e(TAG, "Fetch error", e)
@@ -420,11 +427,12 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
                         @Suppress("UNCHECKED_CAST")
                         val dataMap = data as Map<String, Any>
 
-                        // FIXED: Always use .toFloat() for type safety (matches HistoryLog model)
-                        val timestamp = (dataMap["timestamp"] as? Number)?.toLong() ?: 0L
+                        // FIXED: Map to actual Firebase fields from screenshot
+                        // Firebase uses: temp, humid, lux, last_update (confirmed from logcat)
+                        val timestamp = (dataMap["last_update"] as? Number)?.toLong() ?: 0L
                         val temp = (dataMap["temp"] as? Number)?.toFloat() ?: 0f
                         val humid = (dataMap["humid"] as? Number)?.toFloat() ?: 0f
-                        val lux = (dataMap["lux"] as? Number)?.toInt() ?: 0
+                        val lux = (dataMap["lux"] as? Number)?.toInt() ?: 0  // Firebase uses "lux" not "light"
 
                         if (timestamp > 0) {
                             historyList.add(
@@ -436,6 +444,8 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
                                     pushId = pushId
                                 )
                             )
+                        } else {
+                            Log.w(TAG, "Skip entry with invalid timestamp: $pushId")
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Skip entry: $pushId", e)

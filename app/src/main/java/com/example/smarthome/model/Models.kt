@@ -58,6 +58,12 @@ data class DeviceInfo(
 /**
  * Historical log entry from Firebase Realtime Database
  * Path: history/{deviceID}/{pushId}
+ *
+ * IMPORTANT: Firebase field mapping (verified from console):
+ * - temp: Float (temperature in °C)
+ * - humid: Float (humidity in %)
+ * - light: Int (lux value)
+ * - last_update: Long (timestamp in milliseconds)
  */
 data class HistoryLog(
     val timestamp: Long = 0L,
@@ -70,10 +76,10 @@ data class HistoryLog(
         fun fromMap(pushId: String, map: Map<String, Any>): HistoryLog {
             return HistoryLog(
                 pushId = pushId,
-                timestamp = (map["timestamp"] as? Long) ?: (map["timestamp"] as? Double)?.toLong() ?: 0L,
+                timestamp = (map["last_update"] as? Long) ?: (map["last_update"] as? Double)?.toLong() ?: 0L,
                 temp = (map["temp"] as? Number)?.toFloat() ?: 0f,
                 humid = (map["humid"] as? Number)?.toFloat() ?: 0f,
-                lux = (map["lux"] as? Number)?.toInt() ?: 0
+                lux = (map["light"] as? Number)?.toInt() ?: 0
             )
         }
     }
