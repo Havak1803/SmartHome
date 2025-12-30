@@ -41,12 +41,44 @@ fun ChartScreen(
     var selectedTimeRange by remember { mutableStateOf(TimeRange.DAY) }
     var selectedParameter by remember { mutableStateOf("temp") }
 
+    // Collect error state from ViewModel
+    val errorMessage by viewModel.errorMessage.collectAsState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(DeepDarkBlue)
             .padding(16.dp)
     ) {
+        // Show error banner if Firebase fails
+        errorMessage?.let { error ->
+            if (error.contains("Firebase") || error.contains("401") || error.contains("Load failed")) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFF5252).copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Cannot load Firebase data (Check Settings)",
+                            color = TextWhite,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+
         if (rooms.isNotEmpty()) {
             DeviceSelectorCard(
                 rooms = rooms,
@@ -356,7 +388,19 @@ fun LoadingCard() {
         shape = RoundedCornerShape(16.dp)
     ) {
         Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = ElectricBlue)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "⏳",
+                    fontSize = 48.sp,
+                    color = ElectricBlue
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Loading data...",
+                    color = TextGrey,
+                    fontSize = 14.sp
+                )
+            }
         }
     }
 }

@@ -27,6 +27,17 @@ class MainActivity : ComponentActivity() {
         // ⚠️ DEV MODE: Check for bypass flag
         val bypassAuth = intent.getBooleanExtra("BYPASS_AUTH", false)
 
+        // If bypassed, sign in anonymously for Firebase RTDB access
+        if (bypassAuth && auth.currentUser == null) {
+            auth.signInAnonymously()
+                .addOnSuccessListener {
+                    android.util.Log.d("MainActivity", "✅ Anonymous Auth: Success")
+                }
+                .addOnFailureListener { e ->
+                    android.util.Log.e("MainActivity", "❌ Anonymous Auth failed: ${e.message}")
+                }
+        }
+
         // Check if user is logged in (or bypassed)
         if (auth.currentUser == null && !bypassAuth) {
             // Redirect to login

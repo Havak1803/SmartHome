@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.smarthome.model.*
 import com.example.smarthome.network.MQTTHelper
 import com.example.smarthome.utils.AppConfig
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.tasks.await
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
@@ -265,6 +267,7 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
         try {
             if (!_isConnected.value) {
                 _errorMessage.value = "Not connected"
+                Log.w(TAG, "❌ Cannot send command: MQTT not connected")
                 return
             }
 
@@ -276,6 +279,9 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
 
             val jsonPayload = gson.toJson(mqttCommand)
             val topic = "SmartHome/$deviceId/cmd"
+
+            Log.d(TAG, "📤 MQTT Command → Topic: $topic")
+            Log.d(TAG, "📤 Payload: $jsonPayload")
 
             mqttHelper?.publish(topic, jsonPayload, qos = 1, retained = false)
 
@@ -350,7 +356,7 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /**
-     * FIXED: Type-safe Firebase parsing with .toFloat()
+     * FIXED: Type-safe Firebase parsing with .toFloat() + Auth token support
      */
     private suspend fun fetchFirebaseHistory(
         databaseUrl: String,
@@ -358,25 +364,47 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
         limitToLast: Int
     ): List<HistoryLog> = withContext(Dispatchers.IO) {
         try {
-            val url = "${databaseUrl.trimEnd('/')}/history/$deviceId.json?orderBy=\"\$key\"&limitToLast=$limitToLast"
+            // Get Firebase Auth token (works with Anonymous Auth too)
+            val authToken = try {
+                FirebaseAuth.getInstance().currentUser?.getIdToken(false)?.await()?.token
+            } catch (e: Exception) {
+                Log.w(TAG, "Auth token not available: ${e.message}")
+                null
+            }
+
+            // Build URL with auth token if available
+            val baseUrl = "${databaseUrl.trimEnd('/')}/history/$deviceId.json"
+            val url = if (authToken != null) {
+                "$baseUrl?auth=$authToken&orderBy=\"\$key\"&limitToLast=$limitToLast"
+            } else {
+                "$baseUrl?orderBy=\"\$key\"&limitToLast=$limitToLast"
+            }
 
             Log.d(TAG, "Fetching from Asia region: $url")
+            Log.d(TAG, "Auth token: ${if (authToken != null) "✅ Available" else "❌ Missing"}")
 
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.apply {
                 requestMethod = "GET"
-                connectTimeout = 15000
-                readTimeout = 15000
+                connectTimeout = 8000  // Reduced from 15s
+                readTimeout = 8000
                 setRequestProperty("Accept", "application/json")
             }
 
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                Log.e(TAG, "Firebase HTTP error: ${connection.responseCode}")
+                val errorBody = try {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "No error body"
+                } catch (e: Exception) {
+                    "Cannot read error"
+                }
+                Log.e(TAG, "Firebase HTTP ${connection.responseCode}: $errorBody")
                 return@withContext emptyList()
             }
 
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
+
+            Log.d(TAG, "Response preview: ${response.take(200)}...")
 
             val historyMap = try {
                 gson.fromJson(response, Map::class.java) as? Map<String, Any> ?: emptyMap()
