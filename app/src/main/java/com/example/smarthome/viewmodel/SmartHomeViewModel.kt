@@ -1,9 +1,15 @@
 package com.example.smarthome.viewmodel
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.smarthome.R
 import com.example.smarthome.model.*
 import com.example.smarthome.network.MQTTHelper
 import com.example.smarthome.utils.AppConfig
@@ -22,8 +28,8 @@ import java.net.URL
 import java.util.UUID
 
 /**
- * SmartHomeViewModel - Version 3.3
- * FIXED: Firebase Asia-Southeast1 region + Type safety
+ * SmartHomeViewModel - Version 3.5
+ * FIXED: Firebase Asia-Southeast1 region + Type safety + Threshold Notifications
  */
 class SmartHomeViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -31,6 +37,12 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
     private val gson = Gson()
     private var mqttHelper: MQTTHelper? = null
     private val roomPrefs = application.getSharedPreferences("room_names", android.content.Context.MODE_PRIVATE)
+    private val thresholdPrefs = application.getSharedPreferences("threshold_prefs", android.content.Context.MODE_PRIVATE)
+    private var commandCounter = 0
+
+    // Notification channel
+    private val CHANNEL_ID = "smart_home_alerts"
+    private val notificationManager = application.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     // Firebase Database instance with Asia region URL
     private val firebaseDatabase: FirebaseDatabase by lazy {
@@ -74,10 +86,84 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    private val _isNotificationEnabled = MutableStateFlow(false)
+    val isNotificationEnabled: StateFlow<Boolean> = _isNotificationEnabled.asStateFlow()
+
     init {
-        Log.d(TAG, "ViewModel v3.3 initialized with Firebase URL: ${AppConfig.FIREBASE_URL}")
+        Log.d(TAG, "ViewModel v3.5 initialized with Firebase URL: ${AppConfig.FIREBASE_URL}")
         loadMqttConfig()
         loadFirebaseConfig()
+        loadNotificationEnabled()
+        createNotificationChannel()
+    }
+
+    // ==========================================
+    // THRESHOLD SETTINGS
+    // ==========================================
+
+    data class ThresholdSettings(
+        val tempThreshold: Float = 30f,
+        val humidThreshold: Float = 70f,
+        val luxThreshold: Int = 500
+    )
+
+    fun getThresholdSettings(): ThresholdSettings {
+        return ThresholdSettings(
+            tempThreshold = thresholdPrefs.getFloat("temp_threshold", 30f),
+            humidThreshold = thresholdPrefs.getFloat("humid_threshold", 70f),
+            luxThreshold = thresholdPrefs.getInt("lux_threshold", 500)
+        )
+    }
+
+    fun saveThresholdSettings(tempThreshold: Float, humidThreshold: Float, luxThreshold: Int) {
+        thresholdPrefs.edit()
+            .putFloat("temp_threshold", tempThreshold)
+            .putFloat("humid_threshold", humidThreshold)
+            .putInt("lux_threshold", luxThreshold)
+            .apply()
+        Log.d(TAG, "✅ Thresholds saved: Temp=$tempThreshold°C, Humid=$humidThreshold%, Lux=$luxThreshold")
+    }
+
+    // ==========================================
+    // NOTIFICATION SETTINGS
+    // ==========================================
+
+    fun setNotificationEnabled(enabled: Boolean) {
+        _isNotificationEnabled.value = enabled
+        thresholdPrefs.edit().putBoolean("notification_enabled", enabled).apply()
+        Log.d(TAG, if (enabled) "✅ Notifications ENABLED" else "⚠️ Notifications DISABLED")
+    }
+
+    private fun loadNotificationEnabled() {
+        _isNotificationEnabled.value = thresholdPrefs.getBoolean("notification_enabled", false)
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Smart Home Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Sensor threshold alerts"
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun sendNotification(deviceName: String, sensorType: String, value: String, threshold: String) {
+        if (!_isNotificationEnabled.value) return
+
+        val notification = NotificationCompat.Builder(getApplication(), CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("⚠️ Alert: $deviceName")
+            .setContentText("$sensorType: $value (threshold: $threshold)")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+
+        notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+        Log.d(TAG, "🔔 Notification sent: $deviceName - $sensorType = $value")
     }
 
     // ==========================================
@@ -215,6 +301,41 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
     private fun parseDataMessage(room: Room, message: String): Room {
         return try {
             val dataMsg = gson.fromJson(message, MqttDataMessage::class.java)
+
+            // Check thresholds and send notifications if needed
+            val thresholds = getThresholdSettings()
+            val deviceName = room.name
+
+            // Temperature check
+            if (dataMsg.temperature > thresholds.tempThreshold) {
+                sendNotification(
+                    deviceName,
+                    "Temperature",
+                    "${dataMsg.temperature}°C",
+                    "${thresholds.tempThreshold}°C"
+                )
+            }
+
+            // Humidity check
+            if (dataMsg.humidity > thresholds.humidThreshold) {
+                sendNotification(
+                    deviceName,
+                    "Humidity",
+                    "${dataMsg.humidity}%",
+                    "${thresholds.humidThreshold}%"
+                )
+            }
+
+            // Light check
+            if (dataMsg.light > thresholds.luxThreshold) {
+                sendNotification(
+                    deviceName,
+                    "Light",
+                    "${dataMsg.light} lux",
+                    "${thresholds.luxThreshold} lux"
+                )
+            }
+
             room.copy(
                 sensors = Sensors(
                     temperature = dataMsg.temperature,
@@ -269,7 +390,7 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
         sendCommand(deviceId, "reboot", mapOf<String, Any>())
     }
 
-    private fun sendCommand(deviceId: String, command: String, params: Any) {
+    fun sendCommand(deviceId: String, command: String, params: Any) {
         try {
             if (!_isConnected.value) {
                 _errorMessage.value = "Not connected"
@@ -277,14 +398,17 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
                 return
             }
 
+            commandCounter++
+            val commandId = "app_${String.format("%03d", commandCounter)}"
+
             val mqttCommand = MqttCommand(
-                id = UUID.randomUUID().toString(),
+                id = commandId,
                 command = command,
                 params = params
             )
 
             val jsonPayload = gson.toJson(mqttCommand)
-            val topic = "SmartHome/$deviceId/cmd"
+            val topic = "SmartHome/$deviceId/command"
 
             Log.d(TAG, "📤 MQTT Command → Topic: $topic")
             Log.d(TAG, "📤 Payload: $jsonPayload")

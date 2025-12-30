@@ -60,7 +60,6 @@ class LoginActivity : ComponentActivity() {
 
     private fun navigateToMain() {
         val intent = Intent(this, MainActivity::class.java)
-        intent.putExtra("BYPASS_AUTH", true) // Pass bypass flag
         startActivity(intent)
         finish()
     }
@@ -309,21 +308,6 @@ fun LoginScreen(
                     fontSize = 11.sp,
                     color = TextGrey.copy(alpha = 0.6f)
                 )
-
-                // ⚠️ BYPASS BUTTON - For testing only, remove in production
-                TextButton(
-                    onClick = {
-                        onShowMessage("⚠️ Bypassing Firebase Auth - DEV MODE")
-                        onLoginSuccess()
-                    },
-                    modifier = Modifier.padding(vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "🔓 SKIP LOGIN (DEV)",
-                        fontSize = 10.sp,
-                        color = TextGrey.copy(alpha = 0.4f)
-                    )
-                }
 
                 Text(
                     text = "Version ${AppConfig.APP_VERSION} - Asia Region",

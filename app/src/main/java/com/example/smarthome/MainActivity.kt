@@ -12,8 +12,8 @@ import com.example.smarthome.viewmodel.SmartHomeViewModel
 import com.google.firebase.auth.FirebaseAuth
 
 /**
- * MainActivity - Version 3.1
- * Entry point with authentication check
+ * MainActivity - Version 3.4
+ * Entry point with authentication and logout support
  */
 class MainActivity : ComponentActivity() {
 
@@ -24,22 +24,8 @@ class MainActivity : ComponentActivity() {
 
         auth = FirebaseAuth.getInstance()
 
-        // ⚠️ DEV MODE: Check for bypass flag
-        val bypassAuth = intent.getBooleanExtra("BYPASS_AUTH", false)
-
-        // If bypassed, sign in anonymously for Firebase RTDB access
-        if (bypassAuth && auth.currentUser == null) {
-            auth.signInAnonymously()
-                .addOnSuccessListener {
-                    android.util.Log.d("MainActivity", "✅ Anonymous Auth: Success")
-                }
-                .addOnFailureListener { e ->
-                    android.util.Log.e("MainActivity", "❌ Anonymous Auth failed: ${e.message}")
-                }
-        }
-
-        // Check if user is logged in (or bypassed)
-        if (auth.currentUser == null && !bypassAuth) {
+        // Check if user is logged in
+        if (auth.currentUser == null) {
             // Redirect to login
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
@@ -48,14 +34,27 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SmartHomeTheme {
-                SmartHomeApp()
+                SmartHomeApp(
+                    onLogout = {
+                        handleLogout()
+                    }
+                )
             }
         }
+    }
+
+    private fun handleLogout() {
+        // Sign out from Firebase
+        auth.signOut()
+
+        // Redirect to login
+        startActivity(Intent(this, LoginActivity::class.java))
+        finish()
     }
 }
 
 @Composable
-fun SmartHomeApp() {
+fun SmartHomeApp(onLogout: () -> Unit) {
     // Initialize ViewModel
     val viewModel: SmartHomeViewModel = viewModel()
 
@@ -64,6 +63,9 @@ fun SmartHomeApp() {
         viewModel.connectToMqtt()
     }
 
-    // Main Screen with navigation
-    MainScreen(viewModel = viewModel)
+    // Main Screen with navigation and logout
+    MainScreen(
+        viewModel = viewModel,
+        onLogout = onLogout
+    )
 }

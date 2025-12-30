@@ -17,9 +17,9 @@ import com.example.smarthome.ui.theme.*
 import com.example.smarthome.viewmodel.SmartHomeViewModel
 
 /**
- * MainScreen - Version 3.1
- * Main navigation screen with Home, Chart, and Settings tabs
- * HYBRID ARCHITECTURE: MQTT (Home) + Firebase (Chart)
+ * MainScreen - Version 3.4
+ * Main navigation with Home, Chart, Data History, and Settings tabs
+ * HYBRID ARCHITECTURE: MQTT (Home) + Firebase (Chart + Data)
  */
 
 // ==========================================
@@ -29,6 +29,7 @@ import com.example.smarthome.viewmodel.SmartHomeViewModel
 enum class NavigationTab(val title: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     CHART("Chart", Icons.Default.ShowChart),
+    DATA("Data", Icons.Default.TableChart),
     SETTINGS("Settings", Icons.Default.Settings)
 }
 
@@ -39,7 +40,8 @@ enum class NavigationTab(val title: String, val icon: ImageVector) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
-    viewModel: SmartHomeViewModel
+    viewModel: SmartHomeViewModel,
+    onLogout: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableStateOf(NavigationTab.HOME) }
 
@@ -72,13 +74,14 @@ fun MainScreen(
                 title = {
                     Column {
                         Text(
-                            text = "Smart Home v3.1",
+                            text = "Smart Home v3.4",
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             text = when (selectedTab) {
                                 NavigationTab.HOME -> if (isConnected) "MQTT Connected" else "MQTT Disconnected"
-                                NavigationTab.CHART -> "Firebase Historical Data"
+                                NavigationTab.CHART -> "Firebase Chart View"
+                                NavigationTab.DATA -> "Firebase Data History"
                                 NavigationTab.SETTINGS -> "Configuration"
                             },
                             fontSize = 12.sp,
@@ -152,10 +155,19 @@ fun MainScreen(
                     )
                 }
                 NavigationTab.CHART -> {
-                    // Firebase-powered historical data
+                    // Firebase-powered historical chart
                     ChartScreen(
                         rooms = rooms,
                         chartData = chartData,
+                        isLoading = isLoadingChart,
+                        viewModel = viewModel
+                    )
+                }
+                NavigationTab.DATA -> {
+                    // Firebase-powered data history table
+                    DataHistoryScreen(
+                        rooms = rooms,
+                        historyData = chartData,
                         isLoading = isLoadingChart,
                         viewModel = viewModel
                     )
@@ -183,7 +195,9 @@ fun MainScreen(
                         },
                         onConnect = {
                             viewModel.connectToMqtt()
-                        }
+                        },
+                        onLogout = onLogout,
+                        viewModel = viewModel
                     )
                 }
             }

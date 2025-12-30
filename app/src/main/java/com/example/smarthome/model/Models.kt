@@ -108,6 +108,17 @@ enum class TimeRange(val label: String, val hours: Int) {
 }
 
 // ==========================================
+// DATA HISTORY FILTER (FOR DATA HISTORY TAB)
+// ==========================================
+
+enum class DataHistoryFilter(val label: String) {
+    TODAY("Today"),
+    THIS_WEEK("This Week"),
+    THIS_MONTH("This Month"),
+    ALL_TIME("All Time")
+}
+
+// ==========================================
 // FIREBASE CONFIGURATION (V3.1)
 // ==========================================
 

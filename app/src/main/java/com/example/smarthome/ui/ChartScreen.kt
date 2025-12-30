@@ -82,12 +82,12 @@ fun ChartScreen(
         }
 
         if (rooms.isNotEmpty()) {
-            DeviceSelectorCard(
+            ChartDeviceSelectorCard(
                 rooms = rooms,
                 selectedDevice = selectedDevice,
-                onDeviceSelected = {
-                    selectedDevice = it
-                    viewModel.fetchHistory(it, selectedTimeRange)
+                onDeviceSelected = { deviceId ->
+                    selectedDevice = deviceId
+                    viewModel.fetchHistory(deviceId, selectedTimeRange)
                 }
             )
 
@@ -131,7 +131,7 @@ fun ChartScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeviceSelectorCard(
+fun ChartDeviceSelectorCard(
     rooms: List<Room>,
     selectedDevice: String?,
     onDeviceSelected: (String) -> Unit
