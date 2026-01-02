@@ -1,6 +1,7 @@
 package com.example.smarthome.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -25,6 +26,21 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
+ * Sort column enum for data table
+ */
+enum class SortColumn {
+    DATETIME, TEMPERATURE, HUMIDITY, LIGHT
+}
+
+/**
+ * Sort direction enum
+ */
+enum class SortDirection {
+    ASCENDING,  // Tăng dần (mũi tên xuống)
+    DESCENDING  // Giảm dần (mũi tên lên)
+}
+
+/**
  * DataHistoryScreen - V3.4
  * Table view with filters for historical data
  */
@@ -41,6 +57,11 @@ fun DataHistoryScreen(
 
     // Collect error state
     val errorMessage by viewModel.errorMessage.collectAsState()
+
+    // Debug logging
+    LaunchedEffect(historyData.size, selectedDevice) {
+        android.util.Log.d("DataHistoryScreen", "📊 History data size: ${historyData.size}, Selected device: $selectedDevice")
+    }
 
     // Filter data by time
     val filteredData = remember(historyData, selectedFilter) {
@@ -111,7 +132,8 @@ fun DataHistoryScreen(
                 selectedDevice = selectedDevice,
                 onDeviceSelected = { deviceId ->
                     selectedDevice = deviceId
-                    viewModel.fetchHistory(deviceId, com.example.smarthome.model.TimeRange.MONTH)
+                    // Fetch ALL_TIME data, then filter in UI
+                    viewModel.fetchHistory(deviceId, com.example.smarthome.model.TimeRange.ALL_TIME)
                 }
             )
 
@@ -253,23 +275,65 @@ fun FilterButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.height(40.dp),
+        modifier = modifier.height(42.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = if (isSelected) ElectricBlue else BlueGrey.copy(alpha = 0.3f),
             contentColor = if (isSelected) TextWhite else TextGrey
         ),
-        shape = RoundedCornerShape(10.dp)
+        shape = RoundedCornerShape(10.dp),
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
     ) {
         Text(
             text = label,
-            fontSize = 12.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1
         )
     }
 }
 
 @Composable
 fun DataTable(data: List<HistoryLog>) {
+    var sortColumn by remember { mutableStateOf<SortColumn?>(null) }
+    var sortDirection by remember { mutableStateOf(SortDirection.DESCENDING) }
+
+    // Pagination state
+    var currentPage by remember { mutableStateOf(0) }
+    val itemsPerPage = 10
+
+    // Sắp xếp dữ liệu dựa trên cột và hướng được chọn
+    val sortedData = remember(data, sortColumn, sortDirection) {
+        if (sortColumn == null) {
+            data
+        } else {
+            val sorted = when (sortColumn) {
+                SortColumn.DATETIME -> data.sortedBy { it.timestamp }
+                SortColumn.TEMPERATURE -> data.sortedBy { it.temp }
+                SortColumn.HUMIDITY -> data.sortedBy { it.humid }
+                SortColumn.LIGHT -> data.sortedBy { it.lux }
+                else -> data
+            }
+            if (sortDirection == SortDirection.DESCENDING) {
+                sorted.reversed()
+            } else {
+                sorted
+            }
+        }
+    }
+
+    // Calculate pagination
+    val totalPages = (sortedData.size + itemsPerPage - 1) / itemsPerPage
+    val startIndex = currentPage * itemsPerPage
+    val endIndex = minOf(startIndex + itemsPerPage, sortedData.size)
+    val currentPageData = sortedData.subList(startIndex, endIndex)
+
+    // Reset page when data changes
+    LaunchedEffect(sortedData.size) {
+        if (currentPage >= totalPages && totalPages > 0) {
+            currentPage = totalPages - 1
+        }
+    }
+
     Card(
         colors = CardDefaults.cardColors(containerColor = DarkNavyBlue),
         shape = RoundedCornerShape(16.dp)
@@ -283,10 +347,82 @@ fun DataTable(data: List<HistoryLog>) {
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                TableHeaderCell("Date & Time", Modifier.weight(2f))
-                TableHeaderCell("Temp (°C)", Modifier.weight(1f))
-                TableHeaderCell("Humid (%)", Modifier.weight(1f))
-                TableHeaderCell("Light (lux)", Modifier.weight(1f))
+                TableHeaderCell(
+                    text = "Date & Time",
+                    modifier = Modifier.weight(2f),
+                    sortColumn = SortColumn.DATETIME,
+                    currentSortColumn = sortColumn,
+                    sortDirection = sortDirection,
+                    onSort = { column ->
+                        if (sortColumn == column) {
+                            sortDirection = if (sortDirection == SortDirection.ASCENDING) {
+                                SortDirection.DESCENDING
+                            } else {
+                                SortDirection.ASCENDING
+                            }
+                        } else {
+                            sortColumn = column
+                            sortDirection = SortDirection.DESCENDING
+                        }
+                    }
+                )
+                TableHeaderCell(
+                    text = "Temp (°C)",
+                    modifier = Modifier.weight(1f),
+                    sortColumn = SortColumn.TEMPERATURE,
+                    currentSortColumn = sortColumn,
+                    sortDirection = sortDirection,
+                    onSort = { column ->
+                        if (sortColumn == column) {
+                            sortDirection = if (sortDirection == SortDirection.ASCENDING) {
+                                SortDirection.DESCENDING
+                            } else {
+                                SortDirection.ASCENDING
+                            }
+                        } else {
+                            sortColumn = column
+                            sortDirection = SortDirection.DESCENDING
+                        }
+                    }
+                )
+                TableHeaderCell(
+                    text = "Humid (%)",
+                    modifier = Modifier.weight(1f),
+                    sortColumn = SortColumn.HUMIDITY,
+                    currentSortColumn = sortColumn,
+                    sortDirection = sortDirection,
+                    onSort = { column ->
+                        if (sortColumn == column) {
+                            sortDirection = if (sortDirection == SortDirection.ASCENDING) {
+                                SortDirection.DESCENDING
+                            } else {
+                                SortDirection.ASCENDING
+                            }
+                        } else {
+                            sortColumn = column
+                            sortDirection = SortDirection.DESCENDING
+                        }
+                    }
+                )
+                TableHeaderCell(
+                    text = "Light (lux)",
+                    modifier = Modifier.weight(1f),
+                    sortColumn = SortColumn.LIGHT,
+                    currentSortColumn = sortColumn,
+                    sortDirection = sortDirection,
+                    onSort = { column ->
+                        if (sortColumn == column) {
+                            sortDirection = if (sortDirection == SortDirection.ASCENDING) {
+                                SortDirection.DESCENDING
+                            } else {
+                                SortDirection.ASCENDING
+                            }
+                        } else {
+                            sortColumn = column
+                            sortDirection = SortDirection.DESCENDING
+                        }
+                    }
+                )
             }
 
             Divider(color = DividerColor, thickness = 1.dp)
@@ -297,10 +433,64 @@ fun DataTable(data: List<HistoryLog>) {
                     .fillMaxWidth()
                     .height(400.dp)
             ) {
-                itemsIndexed(data) { index, log ->
-                    DataRow(log = log, index = index)
-                    if (index < data.size - 1) {
+                itemsIndexed(currentPageData) { index, log ->
+                    DataRow(log = log, index = startIndex + index)
+                    if (index < currentPageData.size - 1) {
                         Divider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+                    }
+                }
+            }
+
+            // Pagination Controls
+            if (totalPages > 1) {
+                Divider(color = DividerColor, thickness = 1.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Previous Button
+                    IconButton(
+                        onClick = { if (currentPage > 0) currentPage-- },
+                        enabled = currentPage > 0
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ChevronLeft,
+                            contentDescription = "Previous",
+                            tint = if (currentPage > 0) ElectricBlue else TextGrey
+                        )
+                    }
+
+                    // Page Info
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Page ${currentPage + 1} of $totalPages",
+                            color = TextWhite,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "(${startIndex + 1}-$endIndex of ${sortedData.size})",
+                            color = TextGrey,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    // Next Button
+                    IconButton(
+                        onClick = { if (currentPage < totalPages - 1) currentPage++ },
+                        enabled = currentPage < totalPages - 1
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = "Next",
+                            tint = if (currentPage < totalPages - 1) ElectricBlue else TextGrey
+                        )
                     }
                 }
             }
@@ -309,15 +499,44 @@ fun DataTable(data: List<HistoryLog>) {
 }
 
 @Composable
-fun TableHeaderCell(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        color = ElectricBlue,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Center,
+fun TableHeaderCell(
+    text: String,
+    modifier: Modifier = Modifier,
+    sortColumn: SortColumn,
+    currentSortColumn: SortColumn?,
+    sortDirection: SortDirection,
+    onSort: (SortColumn) -> Unit
+) {
+    Row(
         modifier = modifier
-    )
+            .clickable { onSort(sortColumn) }
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = text,
+            color = ElectricBlue,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+
+        // Hiển thị icon mũi tên nếu cột này đang được sắp xếp
+        if (currentSortColumn == sortColumn) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                imageVector = if (sortDirection == SortDirection.ASCENDING) {
+                    Icons.Default.ArrowDownward  // Mũi tên xuống = tăng dần
+                } else {
+                    Icons.Default.ArrowUpward    // Mũi tên lên = giảm dần
+                },
+                contentDescription = if (sortDirection == SortDirection.ASCENDING) "Ascending" else "Descending",
+                tint = ElectricBlue,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
 }
 
 @Composable

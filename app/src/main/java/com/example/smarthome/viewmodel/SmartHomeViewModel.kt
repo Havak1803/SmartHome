@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Date
 import java.util.UUID
 
 /**
@@ -463,18 +464,32 @@ class SmartHomeViewModel(application: Application) : AndroidViewModel(applicatio
 
                 val config = _firebaseConfig.value
                 val currentTime = System.currentTimeMillis()
-                val timeThreshold = currentTime - (timeRange.hours * 3600 * 1000L)
 
                 // Use Firebase REST API with Asia region URL
                 val historyData = fetchFirebaseHistory(config.databaseUrl, deviceId, 200)
 
-                // TEMPORARY FIX: Disable time filtering since ESP timestamps are from 1999 (NTP not synced)
-                // TODO: Fix ESP NTP sync, then re-enable: .filter { it.timestamp >= timeThreshold }
-                val filteredData = historyData
-                    .sortedBy { it.timestamp }
+                Log.d(TAG, "Raw data count: ${historyData.size}")
+                Log.d(TAG, "TimeRange: ${timeRange.label}, hours: ${timeRange.hours}")
+
+                // Filter data based on time range
+                val filteredData = when {
+                    timeRange.hours < 0 -> {
+                        // ALL_TIME: No filtering, return all data
+                        Log.d(TAG, "ALL_TIME selected - no filtering")
+                        historyData.sortedBy { it.timestamp }
+                    }
+                    else -> {
+                        // Filter by time range from current time
+                        val timeThreshold = currentTime - (timeRange.hours * 3600 * 1000L)
+                        Log.d(TAG, "Filtering from ${Date(timeThreshold)} to ${Date(currentTime)}")
+                        historyData
+                            .filter { it.timestamp >= timeThreshold }
+                            .sortedBy { it.timestamp }
+                    }
+                }
 
                 _chartData.value = filteredData
-                Log.d(TAG, "Loaded ${filteredData.size} entries (time filter disabled for testing)")
+                Log.d(TAG, "Loaded ${filteredData.size} entries for ${timeRange.label}")
 
             } catch (e: Exception) {
                 Log.e(TAG, "Fetch error", e)

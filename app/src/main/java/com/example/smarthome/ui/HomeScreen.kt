@@ -315,7 +315,8 @@ fun RoomCard(
                         val newState = if (fanState == 1) 0 else 1
                         fanState = newState
                         onDeviceControl("fan", newState)
-                    }
+                    },
+                    masterEnabled = masterMode == 1
                 )
                 DeviceControlButton(
                     icon = Icons.Default.Lightbulb,
@@ -325,7 +326,8 @@ fun RoomCard(
                         val newState = if (lightState == 1) 0 else 1
                         lightState = newState
                         onDeviceControl("light", newState)
-                    }
+                    },
+                    masterEnabled = masterMode == 1
                 )
                 DeviceControlButton(
                     icon = Icons.Default.AcUnit,
@@ -335,7 +337,8 @@ fun RoomCard(
                         val newState = if (acState == 1) 0 else 1
                         acState = newState
                         onDeviceControl("ac", newState)
-                    }
+                    },
+                    masterEnabled = masterMode == 1
                 )
             }
         }
@@ -375,30 +378,40 @@ fun DeviceControlButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     isOn: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    masterEnabled: Boolean = true
 ) {
+    // Hiển thị màu xám nếu master OFF, ngược lại hiển thị theo trạng thái thiết bị
+    val displayOn = masterEnabled && isOn
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier.clickable(
+            onClick = onClick,
+            enabled = masterEnabled
+        )
     ) {
         Box(
             modifier = Modifier
                 .size(60.dp)
                 .clip(CircleShape)
-                .background(if (isOn) ElectricBlue else BlueGrey),
+                .background(
+                    if (displayOn) ElectricBlue
+                    else BlueGrey.copy(alpha = if (masterEnabled) 1f else 0.5f)
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = TextWhite,
+                tint = if (displayOn) TextWhite else TextGrey,
                 modifier = Modifier.size(32.dp)
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = label,
-            color = if (isOn) ElectricBlue else TextGrey,
+            color = if (displayOn) ElectricBlue else TextGrey,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium
         )

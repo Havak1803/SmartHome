@@ -104,7 +104,8 @@ enum class ChartParameter(val label: String, val color: Color, val unit: String)
 enum class TimeRange(val label: String, val hours: Int) {
     DAY("24 Hours", 24),
     WEEK("7 Days", 168),
-    MONTH("30 Days", 720)
+    MONTH("30 Days", 720),
+    ALL_TIME("All Time", -1)  // -1 means no time limit
 }
 
 // ==========================================

@@ -119,7 +119,7 @@ fun ChartScreen(
             } else if (chartData.isEmpty()) {
                 EmptyChartCard()
             } else {
-                ChartCard(data = chartData, parameter = selectedParameter)
+                ChartCard(data = chartData, parameter = selectedParameter, timeRange = selectedTimeRange)
                 Spacer(modifier = Modifier.height(12.dp))
                 StatsCard(data = chartData, parameter = selectedParameter)
             }
@@ -236,25 +236,31 @@ fun ParameterSelector(
 }
 
 @Composable
-fun ChartCard(data: List<HistoryLog>, parameter: String) {
+fun ChartCard(data: List<HistoryLog>, parameter: String, timeRange: TimeRange = TimeRange.DAY) {
     Card(
-        modifier = Modifier.fillMaxWidth().height(300.dp),
+        modifier = Modifier.fillMaxWidth().height(350.dp),  // Tăng chiều cao để chứa X-axis
         colors = CardDefaults.cardColors(containerColor = DarkNavyBlue),
         shape = RoundedCornerShape(16.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            LineChart(data = data, parameter = parameter, modifier = Modifier.fillMaxSize())
+            LineChart(
+                data = data,
+                parameter = parameter,
+                timeRange = timeRange,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }
 
 /**
- * FIXED v3.3: Float handling + Touch interaction + Y-axis with scale
+ * FIXED v3.3: Float handling + Touch interaction + Y-axis with scale + X-axis with time labels
  */
 @Composable
 fun LineChart(
     data: List<HistoryLog>,
     parameter: String,
+    timeRange: TimeRange = TimeRange.DAY,
     modifier: Modifier = Modifier
 ) {
     // Convert to List<Float> explicitly
@@ -294,13 +300,22 @@ fun LineChart(
         else -> " lux"
     }
 
+    // Calculate X-axis time labels based on TimeRange
+    val showXAxisLabels = timeRange != TimeRange.ALL_TIME
+    val xAxisLabels = if (showXAxisLabels) {
+        generateTimeLabels(data, timeRange)
+    } else {
+        emptyList()
+    }
+
     Box(modifier = modifier) {
         // Y-axis labels (left side)
         Column(
             modifier = Modifier
                 .fillMaxHeight()
                 .width(50.dp)
-                .align(Alignment.CenterStart),
+                .align(Alignment.CenterStart)
+                .padding(bottom = if (showXAxisLabels) 30.dp else 0.dp),  // Space for X-axis
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Top label (max value)
@@ -333,7 +348,10 @@ fun LineChart(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 55.dp)
+                .padding(
+                    start = 55.dp,
+                    bottom = if (showXAxisLabels) 30.dp else 0.dp
+                )
                 .pointerInput(values.size) {
                     detectTapGestures(
                         onPress = { offset ->
@@ -410,6 +428,26 @@ fun LineChart(
             }
         }
 
+        // X-axis labels (time labels at bottom)
+        if (showXAxisLabels && xAxisLabels.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomStart)
+                    .padding(start = 55.dp, end = 40.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                xAxisLabels.forEach { label ->
+                    Text(
+                        text = label,
+                        color = TextGrey,
+                        fontSize = 9.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
         // Tooltip for selected point
         selectedIndex?.let { index ->
             if (index in values.indices) {
@@ -444,6 +482,39 @@ fun LineChart(
                 }
             }
         }
+    }
+}
+
+/**
+ * Generate time labels for X-axis based on TimeRange
+ */
+fun generateTimeLabels(data: List<HistoryLog>, timeRange: TimeRange): List<String> {
+    if (data.isEmpty()) return emptyList()
+
+    val dateFormat = when (timeRange) {
+        TimeRange.DAY -> java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        TimeRange.WEEK -> java.text.SimpleDateFormat("dd/MM", java.util.Locale.getDefault())
+        TimeRange.MONTH -> java.text.SimpleDateFormat("dd/MM", java.util.Locale.getDefault())
+        TimeRange.ALL_TIME -> return emptyList()  // No labels for ALL_TIME
+    }
+
+    // Number of labels to show based on time range
+    val labelCount = when (timeRange) {
+        TimeRange.DAY -> 6      // Every 4 hours
+        TimeRange.WEEK -> 7     // Every day
+        TimeRange.MONTH -> 6    // Every 5 days
+        else -> 0
+    }
+
+    if (labelCount == 0 || data.isEmpty()) return emptyList()
+
+    val firstTime = data.first().timestamp
+    val lastTime = data.last().timestamp
+    val timeSpan = lastTime - firstTime
+
+    return (0 until labelCount).map { i ->
+        val time = firstTime + (timeSpan * i / (labelCount - 1))
+        dateFormat.format(java.util.Date(time))
     }
 }
 
