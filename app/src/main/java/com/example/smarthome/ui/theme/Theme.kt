@@ -12,33 +12,33 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
+private val LightColorScheme = lightColorScheme(
     primary = ElectricBlue,
-    onPrimary = TextWhite,
+    onPrimary = Color.White,
     secondary = BlueGrey,
-    onSecondary = TextWhite,
-    background = DeepDarkBlue,
-    onBackground = TextWhite,
-    surface = DarkNavyBlue,
-    onSurface = TextWhite,
+    onSecondary = TextDark,
+    background = LightBackground,
+    onBackground = TextDark,
+    surface = LightSurface,
+    onSurface = TextDark,
     error = ErrorRed,
-    onError = TextWhite
+    onError = Color.White
 )
 
 @Composable
 fun SmartHomeTheme(
-    darkTheme: Boolean = true, // Always use dark theme
+    darkTheme: Boolean = false, // Use light theme by default
     content: @Composable () -> Unit
 ) {
-    val colorScheme = DarkColorScheme
+    val colorScheme = LightColorScheme
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = DeepDarkBlue.toArgb()
-            window.navigationBarColor = DeepDarkBlue.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            window.statusBarColor = LightBackground.toArgb()
+            window.navigationBarColor = Color.White.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
         }
     }
 

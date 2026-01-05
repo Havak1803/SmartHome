@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -381,8 +382,24 @@ fun DeviceControlButton(
     onClick: () -> Unit,
     masterEnabled: Boolean = true
 ) {
-    // Hiển thị màu xám nếu master OFF, ngược lại hiển thị theo trạng thái thiết bị
-    val displayOn = masterEnabled && isOn
+    // 3 trạng thái rõ ràng: Master OFF (xám), Master ON + Device OFF (xanh nhạt), Device ON (xanh sáng)
+    val backgroundColor = when {
+        !masterEnabled -> BlueGrey.copy(alpha = 0.3f) // Master OFF: xám đậm
+        isOn -> ElectricBlue // Device ON: xanh sáng đậm
+        else -> ElectricBlue.copy(alpha = 0.25f) // Master ON, Device OFF: xanh nhạt
+    }
+
+    val iconColor = when {
+        !masterEnabled -> BlueGrey // Master OFF: icon xám
+        isOn -> Color.White // Device ON: icon trắng
+        else -> ElectricBlue.copy(alpha = 0.7f) // Master ON, Device OFF: icon xanh nhạt
+    }
+
+    val textColor = when {
+        !masterEnabled -> BlueGrey // Master OFF: text xám
+        isOn -> ElectricBlue // Device ON: text xanh sáng
+        else -> ElectricBlue.copy(alpha = 0.7f) // Master ON, Device OFF: text xanh nhạt
+    }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -395,23 +412,20 @@ fun DeviceControlButton(
             modifier = Modifier
                 .size(60.dp)
                 .clip(CircleShape)
-                .background(
-                    if (displayOn) ElectricBlue
-                    else BlueGrey.copy(alpha = if (masterEnabled) 1f else 0.5f)
-                ),
+                .background(backgroundColor),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = if (displayOn) TextWhite else TextGrey,
+                tint = iconColor,
                 modifier = Modifier.size(32.dp)
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = label,
-            color = if (displayOn) ElectricBlue else TextGrey,
+            color = textColor,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium
         )

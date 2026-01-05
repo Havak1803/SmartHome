@@ -119,9 +119,9 @@ fun MainScreen(
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = PrimaryBlue,
                             selectedTextColor = PrimaryBlue,
-                            indicatorColor = PrimaryBlue.copy(alpha = 0.1f),
-                            unselectedIconColor = Color.Gray,
-                            unselectedTextColor = Color.Gray
+                            indicatorColor = Color(0xFFe2e8f0), // Light grey oval background
+                            unselectedIconColor = Color(0xFF64748b),
+                            unselectedTextColor = Color(0xFF64748b)
                         )
                     )
                 }

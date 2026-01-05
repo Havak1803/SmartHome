@@ -3,21 +3,21 @@ package com.example.smarthome.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ====================================================================
-// Smart Home V3.3 - MIDNIGHT DEEP BLUE THEME
-// Professional dark theme optimized for night use
+// Smart Home V3.3 - CLEAN LIGHT THEME
+// Professional light theme optimized for readability
 // ====================================================================
 
 // Background Colors
-val DeepDarkBlue = Color(0xFF020810)        // Almost black, very deep blue
-val DarkNavyBlue = Color(0xFF0F1E2E)        // Dark Navy for cards/surfaces
+val LightBackground = Color(0xFFFFFFFF)      // White background
+val LightSurface = Color(0xFFF5F5F5)         // Light grey for cards/surfaces
 
 // Primary Colors
-val ElectricBlue = Color(0xFF007BFF)        // Active state (ON) - Changed to 0x007BFF per request
-val BlueGrey = Color(0xFF455A64)            // Inactive state (OFF)
+val ElectricBlue = Color(0xFF3b82f6)        // Active state (ON) - Modern blue
+val BlueGrey = Color(0xFF94a3b8)            // Inactive state (OFF)
 
 // Text Colors
-val TextWhite = Color.White                  // Primary text
-val TextGrey = Color(0xFF90A4AE)            // Secondary text/labels
+val TextDark = Color(0xFF1e293b)            // Primary text (dark for light background)
+val TextGrey = Color(0xFF64748b)            // Secondary text/labels
 
 // Status Colors
 val SuccessGreen = Color(0xFF4CAF50)        // Connected/Success
@@ -30,14 +30,21 @@ val HumidityColor = Color(0xFF4ECDC4)       // Cyan
 val LightColor = Color(0xFFFFD93D)          // Yellow
 
 // Overlay/Divider
-val DividerColor = Color(0xFF263238)        // Subtle divider
-val OverlayColor = Color(0x33000000)        // 20% black overlay
+val DividerColor = Color(0xFFe2e8f0)        // Subtle divider for light theme
+val OverlayColor = Color(0x1A000000)        // 10% black overlay
 
 // ====================================================================
 // ALIASES FOR COMPATIBILITY (Required by MainScreen & SettingsScreen)
 // ====================================================================
-val BgColor = DeepDarkBlue                   // Background alias
-val SurfaceColor = DarkNavyBlue              // Surface alias
-val TextPrimary = TextWhite                  // Primary text alias
+val BgColor = LightBackground                // Background alias
+val SurfaceColor = LightSurface              // Surface alias
+val TextPrimary = TextDark                   // Primary text alias
 val PrimaryBlue = ElectricBlue               // Primary color alias
+
+// ====================================================================
+// BACKWARD COMPATIBILITY ALIASES (for old code)
+// ====================================================================
+val DeepDarkBlue = LightBackground           // Now maps to white
+val DarkNavyBlue = LightSurface              // Now maps to light grey
+val TextWhite = TextDark                     // Now maps to dark text for light theme
 
