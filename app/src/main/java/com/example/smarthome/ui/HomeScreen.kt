@@ -118,7 +118,8 @@ fun HomeScreen(
     // Add Device Info Dialog
     if (showAddDeviceDialog) {
         AddDeviceInfoDialog(
-            onDismiss = { showAddDeviceDialog = false }
+            onDismiss = { showAddDeviceDialog = false },
+            viewModel = viewModel
         )
     }
 }
@@ -545,52 +546,152 @@ fun AddDeviceButton(onClick: () -> Unit) {
 // ==========================================
 
 @Composable
-fun AddDeviceInfoDialog(onDismiss: () -> Unit) {
+fun AddDeviceInfoDialog(
+    onDismiss: () -> Unit,
+    viewModel: SmartHomeViewModel
+) {
+    var roomName by remember { mutableStateOf("") }
+    var chipId by remember { mutableStateOf("") }
+    var interval by remember { mutableStateOf("30") }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             colors = CardDefaults.cardColors(containerColor = DarkNavyBlue),
             shape = RoundedCornerShape(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier.padding(24.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = ElectricBlue,
-                    modifier = Modifier.size(48.dp)
-                )
+                // Header with close button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Add New Device",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextWhite
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = TextGrey
+                        )
+                    }
+                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
+                // Room Name / Location
                 Text(
-                    text = "How to Add Device",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextWhite
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = "1. Make sure your ESP32 device is powered on\n" +
-                            "2. ESP32 should connect to MQTT broker\n" +
-                            "3. Device will auto-appear in Home screen\n" +
-                            "4. You can rename it using Edit button",
-                    color = TextGrey,
+                    text = "Room Name / Location",
+                    color = TextWhite,
                     fontSize = 14.sp,
-                    lineHeight = 20.sp
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = roomName,
+                    onValueChange = { roomName = it },
+                    placeholder = { Text("E.g., Living Room", color = TextGrey) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ElectricBlue,
+                        unfocusedBorderColor = BlueGrey,
+                        focusedTextColor = TextWhite,
+                        unfocusedTextColor = TextWhite,
+                        cursorColor = ElectricBlue
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Chip ID
+                Text(
+                    text = "Chip ID (ESP32 ID)",
+                    color = TextWhite,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = chipId,
+                    onValueChange = { chipId = it },
+                    placeholder = { Text("E.g., esp32_01", color = TextGrey) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ElectricBlue,
+                        unfocusedBorderColor = BlueGrey,
+                        focusedTextColor = TextWhite,
+                        unfocusedTextColor = TextWhite,
+                        cursorColor = ElectricBlue
+                    )
+                )
+                Text(
+                    text = "Must match the code uploaded to the ESP32",
+                    color = TextGrey,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Measurement Interval
+                Text(
+                    text = "Measurement Interval (Seconds)",
+                    color = TextWhite,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = interval,
+                    onValueChange = { interval = it },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ElectricBlue,
+                        unfocusedBorderColor = BlueGrey,
+                        focusedTextColor = TextWhite,
+                        unfocusedTextColor = TextWhite,
+                        cursorColor = ElectricBlue
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                // Save Device Button
                 Button(
-                    onClick = onDismiss,
+                    onClick = {
+                        // Save room name for the device
+                        viewModel.saveRoomName(chipId, roomName)
+
+                        // Set measurement interval
+                        val intervalValue = interval.toIntOrNull() ?: 30
+                        viewModel.setSensorInterval(chipId, intervalValue)
+
+                        // Request device status to trigger auto-discovery
+                        viewModel.sendCommand(chipId, "get_status", emptyMap<String, Any>())
+
+                        onDismiss()
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = roomName.isNotBlank() && chipId.isNotBlank()
                 ) {
-                    Text("Got it", color = TextWhite)
+                    Text(
+                        text = "Save Device",
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                 }
             }
         }
